@@ -45,6 +45,52 @@
     <span class="check"><input type="checkbox" id="review" checked><label for="review" style="margin:0">Eyes review the build</label></span>
     <span class="check"><input type="checkbox" id="canRun" checked><label for="canRun" style="margin:0">Let it run Python and shell</label></span>
   </div>
+
+  <div class="relay">
+    <div class="grid">
+      <div class="field"><label for="relayUrl">Relay address</label>
+        <input id="relayUrl" placeholder="http://127.0.0.1:8787" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="relayToken">Relay token</label>
+        <input id="relayToken" type="password" placeholder="the token the relay printed" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="row">
+      <button class="ghost" id="testRelay">Test relay</button>
+      <button class="ghost" id="relayHelpBtn">How do I start one?</button>
+      <span class="st" id="relaySt">no relay — the page cannot reach the API</span>
+    </div>
+
+    <div id="relayHelp">
+      <p>The API refuses browser calls — it answers the preflight with 403 and no
+         <code>Access-Control-Allow-Origin</code>, so the browser blocks the request and you get
+         <em>Failed to fetch</em>. A relay fixes that: it runs in your terminal, where CORS does not
+         apply, and it holds the API key so the page never carries it.</p>
+
+      <ol>
+        <li><b>Get the relay.</b> <code>relay.py</code> sits next to this page in the repo. Save it anywhere.</li>
+        <li><b>Start it.</b> In a terminal:
+          <pre>python3 relay.py</pre>
+          It asks for your TokenRouter API key once, or reads <code>$TOKENROUTER_API_KEY</code>.
+          Python 3.8+ is the only requirement — no packages to install.</li>
+        <li><b>Copy what it prints.</b> It generates a fresh relay token each start and prints both lines:
+          <pre>Relay address   http://127.0.0.1:8787
+Relay token     kQ7f...</pre></li>
+        <li><b>Paste them above</b> and hit <b>Test relay</b>. Green means you are done.</li>
+      </ol>
+
+      <p><b>Want a token that survives restarts?</b> Pass your own instead of the generated one:</p>
+      <pre>python3 relay.py --token "$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"</pre>
+
+      <p><b>Simplest option of all:</b> the relay serves this page too. Put <code>index.html</code>,
+         <code>style.css</code>, <code>app.js</code> and <code>relay.py</code> in one folder, run the relay, and open
+         <code>http://127.0.0.1:8787</code>. Same origin, so no cross-origin rules apply at all —
+         though you still paste the token above.</p>
+
+      <p class="warn"><b>If the address is http:// and this page is https://</b>, the browser
+         treats it as a public page reaching your private network. The relay sends the
+         <code>Access-Control-Allow-Private-Network</code> header for exactly this, and Chrome and Firefox
+         accept it — but Safari does not. On Safari, open the page from the relay instead.</p>
+    </div>
+  </div>
 </section>
 
 <div id="stage">

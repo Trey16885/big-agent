@@ -4,10 +4,17 @@
 const CONFIG = {
   apiKey  : "sk-NMSwFveIUHqL3Q9HId5pIIYLeg5SdpoDaoOR9Asf5GW7mTCG",
 
-  /* Direct. If Netlify still reports "failed to fetch", upload the _redirects
-     file too and change this line to "/api/v1/chat/completions" — Netlify then
-     fetches TokenRouter for you and CORS never applies. */
-  baseUrl : "https://api.tokenrouter.com/v1/chat/completions",
+  /* TokenRouter sends no CORS headers — its preflight answers 403, so a browser
+     refuses the call and fetch() reports the generic "Failed to fetch". A page
+     can never call it directly, whatever the host.
+
+     So the call goes to a relay the user runs in their own terminal (relay.py,
+     configured in Settings), which has no CORS to obey and holds the API key.
+     Failing that, a same-origin /api path that the host rewrites server-side
+     (_redirects / netlify.toml). The relay is preferred: it works on any host,
+     including none, and keeps the key off the page. */
+  apiPath : "/api/v1/chat/completions",
+  apiHost : "https://api.tokenrouter.com",
 
   brain   : "moonshotai/kimi-k3-free",                            // writes and decides
   eyes    : "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", // looks and reports
@@ -147,14 +154,105 @@ function roundMark(n){
   scroll();
 }
 
+/* ---------- relay ----------
+   The page holds the relay's address and token; the relay holds the API key.
+   Both live in localStorage so they survive a reload. */
+const RELAY = {
+  url  : localStorage.getItem('relayUrl')   || '',
+  token: localStorage.getItem('relayToken') || ''
+};
+const relayBase = () => RELAY.url.trim().replace(/\/+$/, '');
+const usingRelay = () => !!relayBase();
+
+function saveRelay(){
+  RELAY.url   = $('#relayUrl').value.trim();
+  RELAY.token = $('#relayToken').value.trim();
+  localStorage.setItem('relayUrl', RELAY.url);
+  localStorage.setItem('relayToken', RELAY.token);
+  paintRelay();
+}
+function paintRelay(msg, state){
+  const st = $('#relaySt');
+  st.className = 'st' + (state ? ' ' + state : '');
+  if(msg) return void (st.textContent = msg);
+  st.textContent = usingRelay()
+    ? (RELAY.token ? 'relay set — press Test relay' : 'address set, token missing')
+    : 'no relay — the page cannot reach the API';
+}
+
+$('#relayUrl').value   = RELAY.url;
+$('#relayToken').value = RELAY.token;
+$('#relayUrl').oninput = $('#relayToken').oninput = saveRelay;
+$('#relayHelpBtn').onclick = () => $('#relayHelp').classList.toggle('open');
+paintRelay();
+
+$('#testRelay').onclick = async () => {
+  saveRelay();
+  if(!usingRelay()) return paintRelay('enter the address the relay printed', 'bad');
+  paintRelay('checking…');
+  /* Both probes are answered by the relay itself and never touch the API, so
+     this stays instant even when the API is congested — and costs nothing. */
+  const t = () => AbortSignal.timeout(8000);
+  try {
+    /* /health is unauthenticated, so a failure here is the address, not the token. */
+    const r = await fetch(relayBase() + '/health', {cache:'no-store', signal:t()});
+    if(!r.ok) return paintRelay('something answered at that address, but it is not the relay', 'bad');
+  } catch(e){
+    return paintRelay(`cannot reach ${relayBase()} — is relay.py still running?`, 'bad');
+  }
+  if(!RELAY.token) return paintRelay('relay is up, but no token entered', 'bad');
+  try {
+    const v = await fetch(relayBase() + '/verify', {
+      headers:{ 'Authorization':'Bearer ' + RELAY.token }, cache:'no-store', signal:t()
+    });
+    if(v.status === 401) return paintRelay('relay is up, but it rejected that token', 'bad');
+    if(!v.ok)            return paintRelay('relay answered ' + v.status + ' — check the terminal', 'bad');
+    paintRelay('relay works — you are set', 'good');
+  } catch(e){
+    paintRelay('relay stopped answering mid-check — see the terminal', 'bad');
+  }
+};
+
 /* ---------- API ---------- */
 async function complete(model, msgs){
-  const res = await fetch(CONFIG.baseUrl, {
-    method:'POST',
-    headers:{ 'Authorization':'Bearer ' + CONFIG.apiKey, 'Content-Type':'application/json' },
-    body: JSON.stringify({ model, messages: msgs }),
-    signal: abort.signal
-  });
+  /* Built before the try so that a bug here — a null abort, an unserialisable
+     message — surfaces as itself instead of being reported as a network fault. */
+  const body = JSON.stringify({ model, messages: msgs });
+  const signal = abort.signal;
+
+  /* Through the relay when one is configured — it sends the relay token and the
+     relay swaps in the real key. Otherwise the same-origin rewrite, which needs
+     the host to be configured for it. */
+  const relay = usingRelay();
+  const endpoint = relay ? relayBase() + '/v1/chat/completions' : CONFIG.apiPath;
+  const auth = relay ? RELAY.token : CONFIG.apiKey;
+
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer ' + auth, 'Content-Type':'application/json' },
+      body, signal
+    });
+  } catch(e){
+    if(e.name === 'AbortError' || !(e instanceof TypeError)) throw e;
+    /* fetch() only throws for transport-level failures, and its message is
+       always the useless "Failed to fetch". Say what actually went wrong. */
+    if(relay) throw new Error(
+      `Cannot reach the relay at ${relayBase()}. Check relay.py is still running in your terminal, and that the address matches the one it printed. ` +
+      (location.protocol === 'https:' && relayBase().startsWith('http://')
+        ? 'This page is https:// and the relay is http://, so Safari will block it outright — open the page from the relay instead.'
+        : ''));
+    throw new Error(location.protocol === 'file:'
+      ? 'Opened as a local file, so there is no server to reach the API. Start relay.py and put its address in Settings.'
+      : `No relay is set, and ${CONFIG.apiPath} is not reachable on this origin. Open Settings and configure a relay — that works on any host.`);
+  }
+  if(relay && res.status === 401)
+    throw new Error('The relay rejected the token. Copy the relay token exactly as relay.py printed it into Settings — it changes every restart unless you pass --token.');
+  /* The rewrite is missing rather than the API failing: a static host answers an
+     unmapped /api path with its own 404 page instead of forwarding. */
+  if(!relay && res.status === 404 && !(res.headers.get('content-type') || '').includes('json'))
+    throw new Error(`${CONFIG.apiPath} returned a 404 page, so this host is not rewriting /api. Open Settings and configure a relay instead — it needs nothing from the host.`);
   if(res.status !== 200) throw new Error(`Error ${res.status}: ${(await res.text()).slice(0,280)}`);
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
