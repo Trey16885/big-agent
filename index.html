@@ -69,8 +69,11 @@
         <li><b>Get the relay.</b> <code>relay.py</code> sits next to this page in the repo. Save it anywhere.</li>
         <li><b>Start it.</b> In a terminal:
           <pre>python3 relay.py</pre>
-          It asks for your TokenRouter API key once, or reads <code>$TOKENROUTER_API_KEY</code>.
-          Python 3.8+ is the only requirement — no packages to install.</li>
+          It asks once for your TokenRouter key (the brain) and your Google AI API key
+          (the vision model), then remembers the Google one in <code>google.key</code> beside the
+          script so it never asks again. Either can come from the environment instead —
+          <code>$TOKENROUTER_API_KEY</code> and <code>$GOOGLE_API_KEY</code>. Python 3.8+ is the only
+          requirement, no packages to install.</li>
         <li><b>Copy what it prints.</b> It generates a fresh relay token each start and prints both lines:
           <pre>Relay address   http://127.0.0.1:8787
 Relay token     kQ7f...</pre></li>

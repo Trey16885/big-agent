@@ -26,8 +26,11 @@ const CONFIG = {
   apiPath : "/api/v1/chat/completions",
   apiHost : "https://api.tokenrouter.com",
 
-  brain   : "moonshotai/kimi-k3-free",                            // writes and decides
-  eyes    : "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", // looks and reports
+  brain   : "moonshotai/kimi-k3-free",  // writes and decides, via TokenRouter
+  eyes    : "gemma-4-26b-a4b-it",       // looks and reports, via the Google AI API
+
+  /* The relay picks the upstream from the model name, so these two can live on
+     different services without the page knowing or caring. */
 
   cooldown: 3,
 
@@ -269,6 +272,12 @@ async function complete(model, msgs){
       ? 'Opened as a local file, so there is no server to reach the API. Start relay.py and put its address in Settings.'
       : `No relay is set, and ${CONFIG.apiPath} is not reachable on this origin. Open Settings and configure a relay — that works on any host.`);
   }
+  /* The /api rewrite only points at TokenRouter, so the Google-hosted vision
+     model has nowhere to go without a relay. Say that rather than let the
+     rewrite answer with a confusing 404 or a model-not-found. */
+  if(!relay && /gemma/i.test(model)){
+    throw new Error('The vision model runs on the Google AI API, which only the relay knows how to reach. Start relay.py and set its address in Settings.');
+  }
   if(relay && res.status === 401)
     throw new Error('The relay rejected the token. Copy the relay token exactly as relay.py printed it into Settings — it changes every restart unless you pass --token.');
   /* The rewrite is missing rather than the API failing: a static host answers an
@@ -279,7 +288,15 @@ async function complete(model, msgs){
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
   if(!content) throw new Error('Empty reply from ' + model);
-  return content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  /* Gemma wraps its reasoning in <thought>…</thought> before the real answer,
+     and other models use <think>. Left in, the whole reasoning dump becomes the
+     Eyes verdict and the GOOD/OFF test below never matches, so the revision
+     loop would never notice a broken build. Strip paired tags, then any stray
+     one left by a truncated reply. */
+  return content
+    .replace(/<(think|thought|thinking)>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/?(think|thought|thinking)>/gi, '')
+    .trim();
 }
 const brainTurn = () => complete(CONFIG.brain, messages);
 const look = (dataUrl, question) => complete(CONFIG.eyes, [{
