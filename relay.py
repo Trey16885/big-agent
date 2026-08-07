@@ -176,7 +176,11 @@ def forward(body):
     """Call the real API with the real key. No CORS out here."""
     url, key, name = route(body)
     if not key:
-        return 500, json.dumps({"error": f"relay has no API key for {name}"}).encode()
+        hint = ("Big Agent Pro needs a TokenRouter key and the relay has none — switch "
+                "Model set back to Big Agent Flash, or restart the relay with --key"
+                if name == "tokenrouter" else
+                "the relay has no Google key — restart it with --google-key")
+        return 500, json.dumps({"error": hint}).encode()
     req = urllib.request.Request(
         url,
         data=body,
@@ -245,14 +249,19 @@ def main():
         if GOOGLE_KEY and remember_google_key(GOOGLE_KEY):
             print("Saved to %s — you will not be asked again.\n" % KEY_FILE)
 
+    # Optional: Big Agent Flash runs Gemma in both seats and never touches
+    # TokenRouter, so a Google key alone is a working relay. Blank is fine.
     API_KEY = args.key.strip()
     if not API_KEY:
+        print("TokenRouter API key — only Big Agent Pro needs this, for the Kimi brain.")
+        print("Leave it blank to run Big Agent Flash, the default, which is Gemma alone.")
         try:
-            API_KEY = input("TokenRouter API key (starts with sk-): ").strip()
+            API_KEY = input("TokenRouter API key (or Enter to skip): ").strip()
         except (EOFError, KeyboardInterrupt):
-            sys.exit("\nNo API key, nothing to relay.")
-    if not API_KEY:
-        sys.exit("No API key, nothing to relay.")
+            API_KEY = ""
+
+    if not (API_KEY or GOOGLE_KEY):
+        sys.exit("No keys at all, nothing to relay.")
 
     RELAY_TOKEN = args.token.strip() or secrets.token_urlsafe(24)
     SERVE_FILES = not args.no_serve
@@ -262,9 +271,10 @@ def main():
     print(f"\n{line}\n  Big Agent relay is up\n{line}")
     print(f"  Relay address   {address}")
     print(f"  Relay token     {RELAY_TOKEN}")
-    google_state = "remembered" if GOOGLE_KEY else "MISSING — vision will not work"
+    google_state = "ready — Flash and vision" if GOOGLE_KEY else "NO KEY — Flash and vision will not work"
+    other_state = "ready — Pro" if API_KEY else "no key — Pro unavailable, Flash still works"
     print(f"\n  Routing        gemma*  ->  Google AI API   ({google_state})")
-    print(f"                 others  ->  TokenRouter")
+    print(f"                 others  ->  TokenRouter     ({other_state})")
     print(f"\n  Paste those two into Settings in the page.")
     if SERVE_FILES:
         print(f"  Or just open {address} — the relay serves the page too,")
