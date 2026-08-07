@@ -4,10 +4,14 @@
 const CONFIG = {
   apiKey  : "sk-NMSwFveIUHqL3Q9HId5pIIYLeg5SdpoDaoOR9Asf5GW7mTCG",
 
-  /* Direct. If Netlify still reports "failed to fetch", upload the _redirects
-     file too and change this line to "/api/v1/chat/completions" — Netlify then
-     fetches TokenRouter for you and CORS never applies. */
-  baseUrl : "https://api.tokenrouter.com/v1/chat/completions",
+  /* TokenRouter sends no CORS headers — its preflight answers 403, so a browser
+     refuses the call and fetch() reports the generic "Failed to fetch". A page
+     can never call it directly, whatever the host. So we call a same-origin
+     path instead and let the host fetch TokenRouter server-side, where CORS
+     does not apply. _redirects and netlify.toml both map /api/* onto the real
+     API; deploy them next to index.html or this path 404s. */
+  apiPath : "/api/v1/chat/completions",
+  apiHost : "https://api.tokenrouter.com",
 
   brain   : "moonshotai/kimi-k3-free",                            // writes and decides
   eyes    : "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", // looks and reports
@@ -149,12 +153,29 @@ function roundMark(n){
 
 /* ---------- API ---------- */
 async function complete(model, msgs){
-  const res = await fetch(CONFIG.baseUrl, {
-    method:'POST',
-    headers:{ 'Authorization':'Bearer ' + CONFIG.apiKey, 'Content-Type':'application/json' },
-    body: JSON.stringify({ model, messages: msgs }),
-    signal: abort.signal
-  });
+  /* Built before the try so that a bug here — a null abort, an unserialisable
+     message — surfaces as itself instead of being reported as a network fault. */
+  const body = JSON.stringify({ model, messages: msgs });
+  const signal = abort.signal;
+  let res;
+  try {
+    res = await fetch(CONFIG.apiPath, {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer ' + CONFIG.apiKey, 'Content-Type':'application/json' },
+      body, signal
+    });
+  } catch(e){
+    if(e.name === 'AbortError' || !(e instanceof TypeError)) throw e;
+    /* fetch() only throws for transport-level failures, and its message is
+       always the useless "Failed to fetch". Say what actually went wrong. */
+    throw new Error(location.protocol === 'file:'
+      ? 'Opened as a local file, so there is no server to proxy the API. Deploy the folder (Netlify, or any host honouring _redirects) and open it over http.'
+      : `Could not reach ${CONFIG.apiPath} on this origin. Deploy _redirects and netlify.toml alongside index.html so /api/* forwards to ${CONFIG.apiHost}, then hard-reload.`);
+  }
+  /* The proxy is missing rather than the API failing: a static host answers an
+     unmapped /api path with its own 404 page instead of forwarding. */
+  if(res.status === 404 && !(res.headers.get('content-type') || '').includes('json'))
+    throw new Error(`${CONFIG.apiPath} returned a 404 page, so the /api proxy is not configured on this host. Deploy _redirects and netlify.toml next to index.html.`);
   if(res.status !== 200) throw new Error(`Error ${res.status}: ${(await res.text()).slice(0,280)}`);
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;

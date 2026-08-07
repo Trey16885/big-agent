@@ -1,0 +1,6 @@
+# Netlify proxies /api/* to TokenRouter server-side, where CORS does not apply.
+# TokenRouter answers the browser's preflight with 403 and no
+# Access-Control-Allow-Origin, so a direct call from the page can only ever
+# fail with "Failed to fetch". Status 200 makes this a rewrite, not a
+# redirect, so the Authorization header survives the hop.
+/api/*  https://api.tokenrouter.com/:splat  200

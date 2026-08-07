@@ -1,0 +1,10 @@
+# Same rewrite as _redirects, kept so the proxy survives a build setup that
+# publishes a subdirectory and leaves _redirects behind. Harmless duplication.
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.tokenrouter.com/:splat"
+  status = 200
+  force = true
