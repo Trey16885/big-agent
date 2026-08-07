@@ -1,0 +1,7 @@
+# The relay remembers the Google AI API key here after the first run.
+# Never commit it: GitHub's push protection blocks it, and a key in a public
+# repo is a key anyone can spend.
+google.key
+
+__pycache__/
+*.pyc
