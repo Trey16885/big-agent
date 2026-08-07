@@ -29,6 +29,11 @@ const CONFIG = {
   brain   : "moonshotai/kimi-k3-free",  // writes and decides, via TokenRouter
   eyes    : "gemma-4-26b-a4b-it",       // looks and reports, via the Google AI API
 
+  /* Flash — the default — puts Gemma in both seats. It is multimodal, so it can
+     build and look: one model, one key, nothing routed through TokenRouter.
+     Pro keeps Kimi on the brain, which needs a TokenRouter key in the relay. */
+  flashBrain: "gemma-4-26b-a4b-it",
+
   /* The relay picks the upstream from the model name, so these two can live on
      different services without the page knowing or caring. */
 
@@ -89,8 +94,15 @@ const el = {
 let messages = [{role:'system', content:SYSTEM}];
 let artifacts = [], abort = null, lastSend = 0, busy = false, pending = null;
 
-$('#brainTag').textContent = 'brain · ' + CONFIG.brain;
-$('#eyesTag').textContent  = 'eyes · ' + CONFIG.eyes.split('/').pop();
+/* Which model set is in play. Flash runs Gemma in both seats; the default pairs
+   Kimi with Gemma. Set before the tags below are painted. */
+let flash = false;
+const brainModel = () => flash ? CONFIG.flashBrain : CONFIG.brain;
+
+function paintModels(){
+  $('#brainTag').textContent = 'brain · ' + brainModel().split('/').pop();
+  $('#eyesTag').textContent  = 'eyes · '  + CONFIG.eyes.split('/').pop();
+}
 $('#toggleConfig').onclick = () => el.config.classList.toggle('open');
 
 /* ---------- panel ---------- */
@@ -185,6 +197,20 @@ const RELAY = {
   url  : store.get('relayUrl'),
   token: store.get('relayToken')
 };
+
+/* Flash is the default — one model, one key, no TokenRouter. Pro is only in
+   play when it has been chosen explicitly, so an empty setting means Flash. */
+flash = store.get('modelSet') !== 'pro';
+$('#modelSet').value = flash ? 'flash' : 'pro';
+$('#modelSet').onchange = () => {
+  flash = $('#modelSet').value === 'flash';
+  store.set('modelSet', flash ? 'flash' : 'pro');
+  paintModels();
+  bot(flash
+    ? '<p>Flash. Gemma builds and Gemma looks — one model, and nothing goes through TokenRouter.</p>'
+    : '<p>Pro. Kimi builds through TokenRouter, Gemma looks.</p>', true);
+};
+paintModels();
 const relayBase = () => RELAY.url.trim().replace(/\/+$/, '');
 const usingRelay = () => !!relayBase();
 
@@ -321,7 +347,7 @@ async function complete(model, msgs){
     .replace(/<\/?(think|thought|thinking)>/gi, '')
     .trim();
 }
-const brainTurn = () => complete(CONFIG.brain, messages);
+const brainTurn = () => complete(brainModel(), messages);
 const look = (dataUrl, question) => complete(CONFIG.eyes, [{
   role:'user',
   content:[{ type:'text', text:question }, { type:'image_url', image_url:{ url:dataUrl } }]
