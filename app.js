@@ -209,6 +209,29 @@ $('#relayUrl').value   = RELAY.url;
 $('#relayToken').value = RELAY.token;
 $('#relayUrl').oninput = $('#relayToken').oninput = saveRelay;
 $('#relayHelpBtn').onclick = () => $('#relayHelp').classList.toggle('open');
+
+/* Fetched from beside the page rather than embedded in this file, so there is
+   only ever one copy of the relay source to keep correct. */
+$('#getRelay').onclick = async () => {
+  const btn = $('#getRelay'), label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'fetching…';
+  try {
+    const r = await fetch('relay.py', {cache:'no-store'});
+    if(!r.ok) throw new Error('answered ' + r.status);
+    const text = await r.text();
+    /* A host that serves its index page for unknown paths would otherwise hand
+       over an HTML file named relay.py, which fails confusingly much later. */
+    if(!/^#!.*python/.test(text)) throw new Error('that is not the relay source');
+    download({ blob: new Blob([text], {type:'text/x-python'}), name:'relay.py' });
+    btn.textContent = 'saved';
+    setTimeout(() => { btn.textContent = label; }, 2000);
+  } catch(e){
+    btn.textContent = label;
+    paintRelay('relay.py is not next to this page — take it from the repo instead', 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+};
 paintRelay();
 
 $('#testRelay').onclick = async () => {

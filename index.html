@@ -55,6 +55,7 @@
     </div>
     <div class="row">
       <button class="ghost" id="testRelay">Test relay</button>
+      <button class="ghost" id="getRelay">Download relay.py</button>
       <button class="ghost" id="relayHelpBtn">How do I start one?</button>
       <span class="st" id="relaySt">no relay — the page cannot reach the API</span>
     </div>
@@ -66,7 +67,8 @@
          apply, and it holds the API key so the page never carries it.</p>
 
       <ol>
-        <li><b>Get the relay.</b> <code>relay.py</code> sits next to this page in the repo. Save it anywhere.</li>
+        <li><b>Get the relay.</b> Press <b>Download relay.py</b> above, or take it from the repo —
+            it sits next to this page. Save it anywhere.</li>
         <li><b>Start it.</b> In a terminal:
           <pre>python3 relay.py</pre>
           It asks once for your TokenRouter key (the brain) and your Google AI API key
