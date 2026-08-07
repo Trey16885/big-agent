@@ -24,7 +24,10 @@ header{border-bottom:1px solid var(--line);padding:11px 16px;display:flex;align-
 .ghost:disabled{opacity:.4;cursor:not-allowed}
 .ghost.on{border-color:var(--signal);color:var(--signal)}
 
-#config{display:none;border-bottom:1px solid var(--line);background:var(--ink-2);padding:15px 16px;flex:0 0 auto}
+/* The body is height-capped with overflow hidden, so this panel takes its space
+   out of the stage below. Left uncapped, opening the relay instructions can
+   squeeze the thread and workbench off a laptop screen — so it scrolls itself. */
+#config{display:none;border-bottom:1px solid var(--line);background:var(--ink-2);padding:15px 16px;flex:0 1 auto;max-height:60vh;overflow-y:auto}
 #config.open{display:block}
 .grid{display:grid;gap:13px;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));max-width:900px}
 label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
