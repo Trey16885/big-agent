@@ -1,3 +1,13 @@
+/* A script that throws while loading stops binding handlers at that point, and
+   the buttons below it go quiet with nothing on screen to say why. Say why. */
+addEventListener('error', e => {
+  const s = document.getElementById('status');
+  if(s && !s.dataset.fatal){
+    s.dataset.fatal = '1';
+    s.textContent = 'script error — some buttons will not respond: ' + (e.message || 'unknown');
+  }
+});
+
 /* ============================================================
    CONFIG — public page. Everything here ships to the browser.
    ============================================================ */
@@ -157,9 +167,20 @@ function roundMark(n){
 /* ---------- relay ----------
    The page holds the relay's address and token; the relay holds the API key.
    Both live in localStorage so they survive a reload. */
+/* Reading localStorage can throw instead of returning null — Firefox and Safari
+   both do that for file:// pages, and any browser does it when the user blocks
+   site data. Unguarded it aborts the script right here, which silently leaves
+   every handler below this line unbound: Send, Stop, Image, Wake and the relay
+   buttons all stop responding while Settings and Workbench keep working. */
+let storageOK = true;
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ storageOK = false; return ''; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch(e){ storageOK = false; } }
+};
+
 const RELAY = {
-  url  : localStorage.getItem('relayUrl')   || '',
-  token: localStorage.getItem('relayToken') || ''
+  url  : store.get('relayUrl'),
+  token: store.get('relayToken')
 };
 const relayBase = () => RELAY.url.trim().replace(/\/+$/, '');
 const usingRelay = () => !!relayBase();
@@ -167,17 +188,18 @@ const usingRelay = () => !!relayBase();
 function saveRelay(){
   RELAY.url   = $('#relayUrl').value.trim();
   RELAY.token = $('#relayToken').value.trim();
-  localStorage.setItem('relayUrl', RELAY.url);
-  localStorage.setItem('relayToken', RELAY.token);
+  store.set('relayUrl', RELAY.url);
+  store.set('relayToken', RELAY.token);
   paintRelay();
 }
 function paintRelay(msg, state){
   const st = $('#relaySt');
   st.className = 'st' + (state ? ' ' + state : '');
   if(msg) return void (st.textContent = msg);
-  st.textContent = usingRelay()
+  st.textContent = (usingRelay()
     ? (RELAY.token ? 'relay set — press Test relay' : 'address set, token missing')
-    : 'no relay — the page cannot reach the API';
+    : 'no relay — the page cannot reach the API')
+    + (storageOK ? '' : ' · storage is blocked here, so these will not be remembered');
 }
 
 $('#relayUrl').value   = RELAY.url;
